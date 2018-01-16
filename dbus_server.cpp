@@ -11,8 +11,12 @@ void listen_signal()
 	DBusMessageIter arg;
 	DBusConnection* connection;
 	DBusError err;
+	pid_t pid;
 	int ret;
-	char* sigvalue;
+	char* _sig_value_str;
+	int _sig_value_int;
+
+	pid = getpid();
 
 	// 步骤1: 建立与D-Bus的后台的连接
 	dbus_error_init();
@@ -45,6 +49,7 @@ void listen_signal()
 	}
 
 	// 步骤3: 通知D-Bus daemon, 希望监听来行接口test.signal.Type的信号
+	// dbus receiver interface : test.signal.Type
 	dbus_bus_add_match(connection, "type='signal', interface='test.signal.Type'", &err);
 
 	// 实际需要发送东西给daemon来通知希望监听的内容, 所以需要flush
@@ -69,22 +74,53 @@ void listen_signal()
 			continue;
 		}
 
-		if(dbus_message_is_signal(msg, "test.signal.Type", "Test"))
+		// "test.signal.Type" : DBUS RECEIVER INTERFACE Name
+		// "Test" : DBUS RECEIVER SIGNAL Name
+		if(dbus_message_is_signal(msg, "test.signal.Type", "Signal"))
 		{
+			printf("Call dbus_message_is_signal ! \n");
 			if(!dbus_message_iter_init(msg, &arg))
 			{
 				fprintf(stderr, "Message Has no Param!");
+
+				// 释放相关分配的内存
+				dbus_message_unref(msg);
 			}
-			else if(dbus_message_iter_get_arg_type(&arg) != DBUS_TYPE_STRING)
+
+			ret = dbus_message_iter_get_arg_type(&arg);
+			if(DBUS_TYPE_STRING == ret)
 			{
-				g_printerr("Param is not string!");
+				dbus_message_iter_get_basic(&arg, &_sig_value_str);
+				printf("I am %d, Got Signal with value(STRING) : %s \n", pid, _sig_value_str);
+				
+			}
+			else if(DBUS_TYPE_INT32 == ret)
+			{
+				dbus_message_iter_get_basic(&arg, &_sig_value_int);
+				printf("I am %d, Got Signal with value(INT32) : %s \n", pid, _sig_value_int);
 			}
 			else
-			{	
-				dbus_message_iter_get_basic(&arg, &sigvalue);
-			}	
-			printf("Got signal with value: %s \n",sigvalue);
+			{
+				printf("Argument Type Error! \n");
+
+				// 参数类型错误, 释放相关分配的内存
+				dbus_message_unref(msg);
+			}
+			
+			
 		}
+		else if(dbus_message_is_method_call(msg, "test.signal.Type", "Method"))
+		{	
+			printf("Call dbus_message_is_method_call! \n");
+
+			// process reply method call
+		}
+		else
+		{
+			printf("Not a signal OR Not a Method! \n");
+		}
+
+		// 释放相关分配的内存
 		dbus_message_unref(msg);
 	}	
 }
